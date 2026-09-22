@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>串カツ田中 チンチロくん Ver3</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    window.initializeApp = initializeApp;
+    window.getAuth = getAuth;
+    window.signInAnonymously = signInAnonymously;
+    window.signInWithCustomToken = signInWithCustomToken;
+    window.onAuthStateChanged = onAuthStateChanged;
+    window.getFirestore = getFirestore;
+    window.collection = collection;
+    window.onSnapshot = onSnapshot;
+    window.addDoc = addDoc;
+    window.deleteDoc = deleteDoc;
+    window.doc = doc;
+    window.setDoc = setDoc;
+  </script>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800 p-4 pb-16">
+
+  <div class="max-w-md mx-auto space-y-5">
+    
+    <!-- ヘッダー -->
+    <header class="text-center py-4 bg-red-600 text-white rounded-xl shadow-md">
+      <h1 class="text-xl font-bold tracking-wider">🎲 チンチロくん Ver3</h1>
+      <p class="text-xs mt-1 text-red-100">串カツ田中 非公式アプリ </p>
+    </header>
+
+    <!-- 合言葉 (ルーム) の選択 -->
+    <section class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col space-y-2">
+      <div class="flex items-center justify-between">
+        <label class="text-xs font-bold text-gray-600">🔑 合言葉 (同じ合言葉で結果を共有):</label>
+        <span id="connectionStatus" class="text-xs text-gray-400">接続中...</span>
+      </div>
+      <div class="flex gap-2">
+        <input type="text" id="roomKey" value="default" class="flex-1 p-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="合言葉を入力">
+        <button onclick="changeRoom()" class="px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-700">入室</button>
+      </div>
+    </section>
+
+    <!-- 飲み会（実施日）の選択 -->
+    <section class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
+      <label class="text-xs font-bold text-gray-600">📅 対象の飲み会日:</label>
+      <input type="date" id="sessionDate" onchange="changeDate()" class="p-1.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+    </section>
+
+    <!-- タブ切り替えボタン -->
+    <div class="flex bg-gray-200 p-1 rounded-xl text-xs font-bold">
+      <button id="tabInputBtn" onclick="switchTab('input')" class="flex-1 py-2 rounded-lg bg-white shadow text-red-600 transition font-bold">📝 本日の記録・集計</button>
+      <button id="tabPersonBtn" onclick="switchTab('person')" class="flex-1 py-2 rounded-lg text-gray-600 hover:text-gray-900 transition">🏆 通算個人成績</button>
+    </div>
+
+    <!-- ================= タブ1: 入力＆本日サマリー ================= -->
+    <div id="tabInputView" class="space-y-5">
+      
+      <!-- 記録入力フォーム -->
+      <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4">
+        <h2 class="font-bold text-gray-700 text-sm">【新規記録】</h2>
+        
+        <!-- 参加者選択 -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">誰が投げた？ (※下の設定から追加)</label>
+          <select id="playerSelect" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm font-bold bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-500">
+            <option value="">読込中...</option>
+          </select>
+        </div>
+
+        <!-- 出目選択ボタン -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">結果を選択</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="addRecord('田中 (メガ無料)')" class="py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-lg shadow flex flex-col items-center justify-center">
+              <span>🔥 田中</span>
+              <span class="text-xs font-normal">メガ無料</span>
+            </button>
+            <button onclick="addRecord('ゾロ目 (無料)')" class="py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-lg text-lg shadow flex flex-col items-center justify-center">
+              <span>🎉 ゾロ目</span>
+              <span class="text-xs font-normal">無料</span>
+            </button>
+            <button onclick="addRecord('偶数 (半額)')" class="py-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg text-lg shadow flex flex-col items-center justify-center">
+              <span>👌 偶数</span>
+              <span class="text-xs font-normal">半額</span>
+            </button>
+            <button onclick="addRecord('奇数 (メガ)')" class="py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-lg shadow flex flex-col items-center justify-center">
+              <span>☠️ 奇数</span>
+              <span class="text-xs font-normal">メガ</span>
+            </button>
+          </div>
+          <!-- 追加：ノンアルコール -->
+          <button onclick="addRecord('ノンアル (ソフトドリンク)')" class="w-full mt-2 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg text-lg shadow flex flex-col items-center justify-center">
+            <span>🍵 ノンアル</span>
+            <span class="text-xs font-normal">ソフトドリンク等</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 本日の出目集計サマリー -->
+      <section class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
+        <h2 class="font-bold text-gray-700 text-sm">【選択日の全体集計】</h2>
+        <div class="grid grid-cols-5 gap-1 text-center text-xs">
+          <div class="bg-red-50 py-1.5 rounded border border-red-200">
+            <span class="block text-gray-500 font-bold scale-90">田中</span>
+            <span id="statTanaka" class="text-sm font-bold text-red-600">0</span>
+          </div>
+          <div class="bg-yellow-50 py-1.5 rounded border border-yellow-200">
+            <span class="block text-gray-500 font-bold scale-90">ゾロ目</span>
+            <span id="statZorome" class="text-sm font-bold text-yellow-600">0</span>
+          </div>
+          <div class="bg-blue-50 py-1.5 rounded border border-blue-200">
+            <span class="block text-gray-500 font-bold scale-90">偶数</span>
+            <span id="statEven" class="text-sm font-bold text-blue-600">0</span>
+          </div>
+          <div class="bg-purple-50 py-1.5 rounded border border-purple-200">
+            <span class="block text-gray-500 font-bold scale-90">奇数</span>
+            <span id="statOdd" class="text-sm font-bold text-purple-600">0</span>
+          </div>
+          <div class="bg-green-50 py-1.5 rounded border border-green-200">
+            <span class="block text-gray-500 font-bold scale-90">ノンアル</span>
+            <span id="statNonal" class="text-sm font-bold text-green-600">0</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 履歴一覧 -->
+      <section class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-bold text-gray-700 text-sm">【勝負の履歴】</h2>
+          <button onclick="promptClearDayRecords()" class="text-xs text-gray-400 hover:text-red-500 underline">この日のデータを消去</button>
+        </div>
+        <ul id="historyList" class="space-y-2 text-sm max-h-60 overflow-y-auto pr-1">
+          <li class="text-xs text-gray-400 text-center py-4">読込中...</li>
+        </ul>
+      </section>
+    </div>
+
+    <!-- ================= タブ2: 通算個人成績 ================= -->
+    <div id="tabPersonView" class="hidden space-y-4">
+      
+      <!-- 全体の成績 (新規追加) -->
+      <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-3">
+        <div class="flex justify-between items-center">
+          <h2 class="font-bold text-gray-700 text-sm">🌍 全体の通算成績</h2>
+          <span class="text-xs text-gray-400">※全日付・全メンバー</span>
+        </div>
+        <div id="overallStatsContainer" class="flex flex-col items-center">
+          <!-- 全体のチャート描画エリア -->
+          <div class="w-full h-48 relative">
+            <canvas id="chart-overall"></canvas>
+          </div>
+          <div class="mt-3 text-sm font-bold text-gray-600 text-center w-full" id="overallTotalText">
+            総合計: 0 回
+          </div>
+        </div>
+      </section>
+
+      <!-- 個人の成績 -->
+      <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4">
+        <div class="flex justify-between items-center">
+          <h2 class="font-bold text-gray-700 text-sm">👤 個人の通算成績</h2>
+        </div>
+        <div id="personalStatsContainer" class="space-y-4">
+          <!-- JSで全期間の個人カードを動的生成 -->
+        </div>
+      </section>
+    </div>
+
+    <!-- ================= アプリ最下部: 設定 エリア ================= -->
+    <footer class="pt-4 border-t border-gray-200">
+      <button onclick="toggleSettings()" class="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1 shadow-sm transition">
+        ⚙️ メンバー設定を開く / 閉じる
+      </button>
+
+      <!-- メンバー設定 -->
+      <section id="settingsPanel" class="hidden mt-3 bg-yellow-50 p-4 rounded-xl border border-yellow-300 space-y-4">
+        <div>
+          <h3 class="font-bold text-sm text-yellow-900 mb-2">⚙️ 参加者メンバー設定 (ルーム内共有)</h3>
+          <div class="flex gap-2 mb-2">
+            <input type="text" id="newMemberName" placeholder="新しいメンバー名" class="flex-1 p-2 border border-gray-300 rounded-lg text-sm">
+            <button onclick="addMember()" class="bg-yellow-600 text-white font-bold px-3 py-2 rounded-lg text-sm">追加</button>
+          </div>
+          <p class="text-xs text-gray-500 mb-1">現在の登録メンバー (タップで削除):</p>
+          <div id="memberListTags" class="flex flex-wrap gap-1.5 min-h-[30px]">
+            <!-- JSで動的にタグ生成 -->
+            <span class="text-xs text-gray-400">読込中...</span>
+          </div>
+        </div>
+      </section>
+    </footer>
+
+  </div>
+
+  <!-- カスタムアラートモーダル -->
+  <div id="customAlert" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-5 w-full max-w-sm space-y-4 shadow-xl">
+      <p id="customAlertMsg" class="text-gray-800 font-bold text-center"></p>
+      <button onclick="closeAlert()" class="w-full py-2 bg-gray-200 rounded-lg font-bold text-gray-700 hover:bg-gray-300">閉じる</button>
+    </div>
+  </div>
+
+  <!-- カスタム確認モーダル -->
+  <div id="customConfirm" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-5 w-full max-w-sm space-y-4 shadow-xl">
+      <p id="customConfirmMsg" class="text-gray-800 font-bold text-center"></p>
+      <div class="flex gap-2">
+        <button onclick="closeConfirm(false)" class="flex-1 py-2 bg-gray-200 rounded-lg font-bold text-gray-700 hover:bg-gray-300">キャンセル</button>
+        <button onclick="closeConfirm(true)" class="flex-1 py-2 bg-red-600 rounded-lg font-bold text-white hover:bg-red-700">実行</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- モーダル制御 ---
+    let confirmCallback = null;
+    function showAlert(msg) {
+      document.getElementById('customAlertMsg').textContent = msg;
+      document.getElementById('customAlert').classList.remove('hidden');
+    }
+    function closeAlert() {
+      document.getElementById('customAlert').classList.add('hidden');
+    }
+    function showConfirm(msg, callback) {
+      document.getElementById('customConfirmMsg').textContent = msg;
+      confirmCallback = callback;
+      document.getElementById('customConfirm').classList.remove('hidden');
+    }
+    function closeConfirm(result) {
+      document.getElementById('customConfirm').classList.add('hidden');
+      if (result && confirmCallback) confirmCallback();
+      confirmCallback = null;
+    }
+
+    // --- Chart.js インスタンス管理 ---
+    window.myCharts = {};
+
+    // --- 状態管理 ---
+    let currentRoomId = "default";
+    let allRecords = [];
+    let allMembers = [];
+    let unsubscribeRecords = null;
+    let unsubscribeMembers = null;
+
+    // --- Firebase 初期化 ---
+    let app, db, auth, user;
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'chinchiro-v3-app';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 日付の初期化
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('sessionDate').value = today;
+
+      // Firebaseが存在する場合のみ初期化
+      if (firebaseConfig && window.initializeApp) {
+        app = window.initializeApp(firebaseConfig);
+        db = window.getFirestore(app);
+        auth = window.getAuth(app);
+        
+        try {
+          if (initialAuthToken) {
+            await window.signInWithCustomToken(auth, initialAuthToken);
+          } else {
+            await window.signInAnonymously(auth);
+          }
+          user = auth.currentUser;
+          listenToRoom(currentRoomId);
+        } catch (error) {
+          console.error("Auth error:", error);
+          showAlert("データベースの認証に失敗しました。");
+        }
+      } else {
+         showAlert("Firebase設定が見つかりません。環境を確認してください。");
+      }
+    });
+
+    function changeRoom() {
+      const inputVal = document.getElementById('roomKey').value.trim();
+      if (!inputVal) {
+        showAlert("合言葉を入力してください");
+        return;
+      }
+      currentRoomId = inputVal;
+      listenToRoom(currentRoomId);
+    }
+
+    function listenToRoom(roomId) {
+      if (!user || !db) return;
+      
+      const statusEl = document.getElementById('connectionStatus');
+      statusEl.textContent = "同期中...";
+      statusEl.className = "text-xs text-blue-500 font-bold";
+
+      // 古いリスナーを解除
+      if (unsubscribeRecords) unsubscribeRecords();
+      if (unsubscribeMembers) unsubscribeMembers();
+
+      allRecords = [];
+      allMembers = [];
+
+      // レコードリスナー
+      const recordsRef = window.collection(db, 'artifacts', appId, 'public', 'data', `${roomId}_records`);
+      unsubscribeRecords = window.onSnapshot(recordsRef, (snapshot) => {
+        allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // JSメモリ内でソート (Timestampの降順)
+        allRecords.sort((a, b) => b.createdAt - a.createdAt);
+        render();
+      }, (err) => {
+        console.error("Records sync error:", err);
+        statusEl.textContent = "同期エラー";
+        statusEl.className = "text-xs text-red-500 font-bold";
+      });
+
+      // メンバーリスナー
+      const membersRef = window.collection(db, 'artifacts', appId, 'public', 'data', `${roomId}_members`);
+      unsubscribeMembers = window.onSnapshot(membersRef, (snapshot) => {
+        allMembers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // 名前の昇順ソート
+        allMembers.sort((a, b) => a.name.localeCompare(b.name));
+        renderMembers();
+        
+        statusEl.textContent = "同期完了";
+        statusEl.className = "text-xs text-green-500 font-bold";
+        setTimeout(() => {
+          statusEl.textContent = "リアルタイム共有中";
+          statusEl.className = "text-xs text-green-600 font-bold";
+        }, 2000);
+      }, (err) => console.error("Members sync error:", err));
+    }
+
+    function switchTab(tab) {
+      const inputView = document.getElementById('tabInputView');
+      const personView = document.getElementById('tabPersonView');
+      const inputBtn = document.getElementById('tabInputBtn');
+      const personBtn = document.getElementById('tabPersonBtn');
+
+      if (tab === 'input') {
+        inputView.classList.remove('hidden');
+        personView.classList.add('hidden');
+        inputBtn.className = "flex-1 py-2 rounded-lg bg-white shadow text-red-600 transition font-bold";
+        personBtn.className = "flex-1 py-2 rounded-lg text-gray-600 hover:text-gray-900 transition";
+      } else {
+        inputView.classList.add('hidden');
+        personView.classList.remove('hidden');
+        personBtn.className = "flex-1 py-2 rounded-lg bg-white shadow text-red-600 transition font-bold";
+        inputBtn.className = "flex-1 py-2 rounded-lg text-gray-600 hover:text-gray-900 transition";
+        // タブ切り替え時にチャートのサイズをリセットさせるため再描画
+        setTimeout(render, 50);
+      }
+    }
+
+    function toggleSettings() {
+      document.getElementById('settingsPanel').classList.toggle('hidden');
+    }
+
+    function changeDate() {
+      render();
+    }
+
+    async function addMember() {
+      if (!user || !db) return;
+      const input = document.getElementById('newMemberName');
+      const name = input.value.trim();
+      if (!name) return;
+
+      // 既存チェック
+      if (allMembers.find(m => m.name === name)) {
+        showAlert("すでに登録されています");
+        input.value = '';
+        return;
+      }
+
+      try {
+        const membersRef = window.collection(db, 'artifacts', appId, 'public', 'data', `${currentRoomId}_members`);
+        await window.addDoc(membersRef, {
+          name: name,
+          createdAt: Date.now()
+        });
+        input.value = '';
+      } catch (err) {
+        console.error(err);
+        showAlert("メンバー追加に失敗しました");
+      }
+    }
+
+    function promptRemoveMember(id, name) {
+      showConfirm(`${name} さんを削除しますか？`, async () => {
+        if (!user || !db) return;
+        try {
+          await window.deleteDoc(window.doc(db, 'artifacts', appId, 'public', 'data', `${currentRoomId}_members`, id));
+        } catch(err) {
+          console.error(err);
+        }
+      });
+    }
+
+    function renderMembers() {
+      const select = document.getElementById('playerSelect');
+      const container = document.getElementById('memberListTags');
+      
+      if (allMembers.length === 0) {
+        select.innerHTML = '<option value="">(メンバーを追加してください)</option>';
+        container.innerHTML = '<span class="text-xs text-gray-400">メンバーがいません</span>';
+        return;
+      }
+
+      // セレクトボックス描画
+      select.innerHTML = allMembers.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('');
+      
+      // タグ描画
+      container.innerHTML = allMembers.map(m => `
+        <span onclick="promptRemoveMember('${m.id}', '${escapeHtml(m.name)}')" class="bg-white border border-yellow-400 text-yellow-900 px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-100 hover:text-red-600 transition">
+          ${escapeHtml(m.name)} ✕
+        </span>
+      `).join('');
+    }
+
+    async function addRecord(result) {
+      if (!user || !db) return;
+      const name = document.getElementById('playerSelect').value;
+      const currentDate = document.getElementById('sessionDate').value;
+
+      if (!name) {
+        showAlert('参加者メンバーを登録・選択してください。');
+        return;
+      }
+
+      try {
+        const recordsRef = window.collection(db, 'artifacts', appId, 'public', 'data', `${currentRoomId}_records`);
+        await window.addDoc(recordsRef, {
+          date: currentDate,
+          name: name,
+          result: result,
+          timeStr: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
+          createdAt: Date.now()
+        });
+      } catch(err) {
+        console.error(err);
+        showAlert("記録の追加に失敗しました");
+      }
+    }
+
+    function promptDeleteRecord(id) {
+      showConfirm("この記録を削除しますか？", async () => {
+        if (!user || !db) return;
+        try {
+          await window.deleteDoc(window.doc(db, 'artifacts', appId, 'public', 'data', `${currentRoomId}_records`, id));
+        } catch(err) {
+          console.error(err);
+        }
+      });
+    }
+
+    function promptClearDayRecords() {
+      const currentDate = document.getElementById('sessionDate').value;
+      showConfirm(`${currentDate} の全記録を削除しますか？`, async () => {
+        if (!user || !db) return;
+        try {
+          const targets = allRecords.filter(r => r.date === currentDate);
+          for (const target of targets) {
+             await window.deleteDoc(window.doc(db, 'artifacts', appId, 'public', 'data', `${currentRoomId}_records`, target.id));
+          }
+        } catch(err) {
+          console.error(err);
+        }
+      });
+    }
+
+    function render() {
+      const currentDate = document.getElementById('sessionDate').value;
+      const dayRecords = allRecords.filter(r => r.date === currentDate);
+
+      // 1. 本日の履歴一覧描画
+      const listEl = document.getElementById('historyList');
+      listEl.innerHTML = '';
+
+      if (dayRecords.length === 0) {
+        listEl.innerHTML = `<li class="text-xs text-gray-400 text-center py-4">${currentDate} の記録はありません</li>`;
+      } else {
+        dayRecords.forEach(r => {
+          const li = document.createElement('li');
+          li.className = 'flex justify-between items-center p-2.5 bg-gray-50 rounded-lg border border-gray-100';
+          
+          let colorClass = 'text-gray-700';
+          if (r.result.includes('田中')) colorClass = 'text-red-600 font-bold';
+          else if (r.result.includes('無料')) colorClass = 'text-yellow-600 font-bold';
+          else if (r.result.includes('半額')) colorClass = 'text-blue-600';
+          else if (r.result.includes('メガ')) colorClass = 'text-purple-600 font-bold';
+          else if (r.result.includes('ノンアル')) colorClass = 'text-green-600 font-bold';
+
+          li.innerHTML = `
+            <div>
+              <span class="font-bold mr-2 text-gray-800">${escapeHtml(r.name)}</span>
+              <span class="${colorClass} text-xs">${r.result}</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs text-gray-400">${r.timeStr || ''}</span>
+              <button onclick="promptDeleteRecord('${r.id}')" class="text-gray-300 hover:text-red-500 text-xs px-1">✕</button>
+            </div>
+          `;
+          listEl.appendChild(li);
+        });
+      }
+
+      // 2. 本日の全体集計
+      let tanaka = 0, zorome = 0, even = 0, odd = 0, nonal = 0;
+      dayRecords.forEach(r => {
+        if (r.result.includes('田中')) tanaka++;
+        else if (r.result.includes('無料')) zorome++;
+        else if (r.result.includes('半額')) even++;
+        else if (r.result.includes('メガ')) odd++;
+        else if (r.result.includes('ノンアル')) nonal++;
+      });
+
+      document.getElementById('statTanaka').textContent = tanaka;
+      document.getElementById('statZorome').textContent = zorome;
+      document.getElementById('statEven').textContent = even;
+      document.getElementById('statOdd').textContent = odd;
+      document.getElementById('statNonal').textContent = nonal;
+
+      // 3. 全期間の通算個人成績 ＆ 全体成績 (タブ2用)
+      renderCumulativeStats();
+    }
+
+    function renderCumulativeStats() {
+      // 全体集計用
+      let oTotal = 0, oTanaka = 0, oZorome = 0, oEven = 0, oOdd = 0, oNonal = 0;
+      
+      // 個人集計用
+      const pStats = {};
+      allMembers.forEach(m => {
+        pStats[m.name] = { total: 0, tanaka: 0, zorome: 0, even: 0, odd: 0, nonal: 0 };
+      });
+
+      allRecords.forEach(r => {
+        // 全体カウント
+        oTotal++;
+        if (r.result.includes('田中')) oTanaka++;
+        else if (r.result.includes('無料')) oZorome++;
+        else if (r.result.includes('半額')) oEven++;
+        else if (r.result.includes('メガ')) oOdd++;
+        else if (r.result.includes('ノンアル')) oNonal++;
+
+        // 個人カウント
+        if (!pStats[r.name]) {
+          pStats[r.name] = { total: 0, tanaka: 0, zorome: 0, even: 0, odd: 0, nonal: 0 };
+        }
+        pStats[r.name].total++;
+        if (r.result.includes('田中')) pStats[r.name].tanaka++;
+        else if (r.result.includes('無料')) pStats[r.name].zorome++;
+        else if (r.result.includes('半額')) pStats[r.name].even++;
+        else if (r.result.includes('メガ')) pStats[r.name].odd++;
+        else if (r.result.includes('ノンアル')) pStats[r.name].nonal++;
+      });
+
+      // === 全体グラフの描画 ===
+      document.getElementById('overallTotalText').textContent = `総合計: ${oTotal} 回`;
+      drawPieChart('chart-overall', [oTanaka, oZorome, oEven, oOdd, oNonal]);
+
+      // === 個人グラフの描画 ===
+      const container = document.getElementById('personalStatsContainer');
+      container.innerHTML = '';
+
+      const keys = Object.keys(pStats);
+      if (keys.length === 0 || allRecords.length === 0) {
+        container.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">個人の通算データがまだありません</p>';
+        return;
+      }
+
+      // 回数が多い順にソート
+      keys.sort((a, b) => pStats[b].total - pStats[a].total);
+
+      keys.forEach((name, index) => {
+        const stat = pStats[name];
+        if (stat.total === 0) return;
+
+        const canvasId = `chart-person-${index}`;
+        const card = document.createElement('div');
+        card.className = 'p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3';
+
+        card.innerHTML = `
+          <div class="flex justify-between items-center border-b border-gray-200 pb-2">
+            <span class="font-bold text-gray-800 text-base">${escapeHtml(name)}</span>
+            <div class="text-xs text-right">
+              <span class="text-gray-500 font-bold block">通算 ${stat.total} 回</span>
+              <span class="mt-1 inline-block font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">🔥 田中: ${stat.tanaka} 回</span>
+            </div>
+          </div>
+          
+          <div class="flex flex-row items-center gap-3 pt-1">
+            <!-- 個人の円グラフ -->
+            <div class="w-32 h-32 relative flex-shrink-0">
+              <canvas id="${canvasId}"></canvas>
+            </div>
+            
+            <!-- 数値一覧 -->
+            <div class="grid grid-cols-2 gap-1.5 text-center text-xs flex-1">
+              <div class="bg-white p-1 rounded border border-gray-100">
+                <span class="block text-gray-400 scale-90">田中</span>
+                <span class="font-bold text-red-600">${stat.tanaka}</span>
+              </div>
+              <div class="bg-white p-1 rounded border border-gray-100">
+                <span class="block text-gray-400 scale-90">ゾロ目</span>
+                <span class="font-bold text-yellow-600">${stat.zorome}</span>
+              </div>
+              <div class="bg-white p-1 rounded border border-gray-100">
+                <span class="block text-gray-400 scale-90">偶数</span>
+                <span class="font-bold text-blue-600">${stat.even}</span>
+              </div>
+              <div class="bg-white p-1 rounded border border-gray-100">
+                <span class="block text-gray-400 scale-90">奇数</span>
+                <span class="font-bold text-purple-600">${stat.odd}</span>
+              </div>
+              <div class="bg-white p-1 rounded border border-gray-100 col-span-2">
+                <span class="block text-gray-400 scale-90">ノンアル</span>
+                <span class="font-bold text-green-600">${stat.nonal}</span>
+              </div>
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+        
+        // DOM構築後にチャート描画 (非同期的に行わないとcanvas要素が取得できないため)
+        setTimeout(() => {
+           drawPieChart(canvasId, [stat.tanaka, stat.zorome, stat.even, stat.odd, stat.nonal], true);
+        }, 0);
+      });
+    }
+
+    function drawPieChart(canvasId, dataValues, isSmall = false) {
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return;
+      
+      // 既存のチャートがあれば破棄
+      if (window.myCharts[canvasId]) {
+        window.myCharts[canvasId].destroy();
+      }
+
+      // すべて0の場合は薄いグレーのダミー円を描画
+      const isEmpty = dataValues.every(v => v === 0);
+      const bgColors = isEmpty 
+          ? ['#e5e7eb'] // gray-200
+          : ['#dc2626', '#eab308', '#3b82f6', '#9333ea', '#22c55e']; // 田中, ゾロ目, 偶数, 奇数, ノンアル
+      const plotData = isEmpty ? [1] : dataValues;
+
+      window.myCharts[canvasId] = new Chart(ctx, {
+        type: 'doughnut', // doughnutの方が見栄えが良い場合が多いので採用
+        data: {
+          labels: isEmpty ? ['データなし'] : ['田中', 'ゾロ目', '偶数', '奇数', 'ノンアル'],
+          datasets: [{
+            data: plotData,
+            backgroundColor: bgColors,
+            borderWidth: 1,
+            borderColor: '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '40%', // ドーナツの太さ
+          plugins: {
+            legend: {
+              display: !isSmall, // 小さいグラフ(個人)の場合は凡例を非表示にしてスッキリさせる
+              position: 'right',
+              labels: {
+                boxWidth: 10,
+                font: { size: 10 }
+              }
+            },
+            tooltip: {
+              enabled: !isEmpty,
+              callbacks: {
+                label: function(context) {
+                  let label = context.label || '';
+                  if (label) label += ': ';
+                  label += context.parsed + '回';
+                  return label;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // HTMLエスケープ処理
+    function escapeHtml(str) {
+      if(!str) return "";
+      return String(str).replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+  </script>
+</body>
+</html>
